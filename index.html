@@ -3,31 +3,54 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>羽球雙打戰術跑位模擬器 V16 精密校正版</title>
+  <title>羽球雙打戰術跑位模擬器 PRO V22</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
   <style>
-    body { margin: 0; padding: 0; background-color: #f1f5f9; overflow-x: hidden; font-family: 'BiauKai', 'DFKai-SB', '楷體', 'KaiTi', serif !important; }
-    svg { font-family: 'BiauKai', 'DFKai-SB', '楷體', 'KaiTi', serif !important; }
-    .anim-enabled .anim-player-group { transition: transform 0.6s ease-in-out 1.0s; }
-    .anim-enabled .anim-ball { transition-property: cx, cy, x1, y1, x2, y2; transition-duration: 0.5s; transition-timing-function: ease-out; transition-delay: 0s; }
+    * { font-family: 'BiauKai', 'DFKai-SB', '楷體', 'KaiTi', serif !important; }
+    body { margin: 0; padding: 0; background-color: #f8fafc; overflow-x: hidden; }
+    
+    .anim-enabled .anim-player-group { transition: transform 0.6s ease-in-out 0.4s; }
     .no-anim * { transition: none !important; }
+    
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    .pro-card { background-color: white; border: 3px solid #0f172a; border-radius: 1rem; box-shadow: 4px 4px 0px 0px #0f172a; transition: all 0.2s; }
-    .pro-tab-active { background-color: #0f172a; color: #fbbf24; border: 2px solid #0f172a; }
-    .pro-tab-inactive { background-color: white; color: #475569; border: 2px solid #cbd5e1; }
-    .coverage-area { transition: all 0.8s ease-in-out 1.0s; }
+    
+    .pro-card { 
+      background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 1.25rem; 
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01); 
+      transition: all 0.3s ease; 
+    }
+    /* V22 動態 6 點共用接縫變形動畫，保證無空隙與完美斜切 */
+    .coverage-path { transition: d 0.6s ease-in-out 0.4s; stroke-width: 1px; }
+    .no-anim .coverage-path { transition: none !important; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useRef, useEffect, useCallback } = React;
+
+    // V22 核心：6點共用接縫矩陣 (包含完美斜切防守網)
+    const cov = {
+      splitAB: { a: 'M 20 690 L 325 690 L 325 1025 L 325 1360 L 20 1360 L 20 1025 Z', b: 'M 325 690 L 630 690 L 630 1025 L 630 1360 L 325 1360 L 325 1025 Z' }, 
+      splitBA: { a: 'M 325 690 L 630 690 L 630 1025 L 630 1360 L 325 1360 L 325 1025 Z', b: 'M 20 690 L 325 690 L 325 1025 L 325 1360 L 20 1360 L 20 1025 Z' }, 
+      frontABackB: { a: 'M 20 690 L 325 690 L 630 690 L 630 1025 L 325 1025 L 20 1025 Z', b: 'M 20 1025 L 325 1025 L 630 1025 L 630 1360 L 325 1360 L 20 1360 Z' }, 
+      frontBBackA: { a: 'M 20 1025 L 325 1025 L 630 1025 L 630 1360 L 325 1360 L 20 1360 Z', b: 'M 20 690 L 325 690 L 630 690 L 630 1025 L 325 1025 L 20 1025 Z' }, 
+      defendSmashLeft: { a: 'M 20 690 L 260 690 L 260 1025 L 260 1360 L 20 1360 L 20 1025 Z', b: 'M 260 690 L 630 690 L 630 1025 L 630 1360 L 260 1360 L 260 1025 Z' }, 
+      hugeLeftA: { a: 'M 20 690 L 450 690 L 450 1025 L 450 1360 L 20 1360 L 20 1025 Z', b: 'M 450 690 L 630 690 L 630 1025 L 630 1360 L 450 1360 L 450 1025 Z' }, 
+      mixedV: { a: 'M 20 690 L 630 690 L 450 850 L 325 950 L 200 850 L 20 690 Z', b: 'M 20 1360 L 200 850 L 325 950 L 450 850 L 630 1360 L 325 1360 Z' },
+      // V22 新增：斜切接縫防守 (A負責左上，B負責右下)
+      diagTL_BR_A_Front: { a: 'M 20 690 L 325 690 L 630 690 L 630 800 L 20 1200 L 20 945 Z', b: 'M 20 1200 L 630 800 L 630 1080 L 630 1360 L 325 1360 L 20 1360 Z' },
+      // V22 新增：斜切接縫防守 (B負責左上，A負責右下)
+      diagTL_BR_B_Front: { a: 'M 20 1200 L 630 800 L 630 1080 L 630 1360 L 325 1360 L 20 1360 Z', b: 'M 20 690 L 325 690 L 630 690 L 630 800 L 20 1200 L 20 945 Z' },
+      // V22 新增：斜切接縫防守 (A負責右上，B負責左下 - 適用發外角)
+      diagTR_BL_A_Front: { a: 'M 20 690 L 325 690 L 630 690 L 630 1200 L 20 800 L 20 745 Z', b: 'M 20 800 L 630 1200 L 630 1360 L 325 1360 L 20 1360 L 20 1080 Z' }
+    };
 
     const BadmintonTacticsSimulator = () => {
       const [currentMode, setCurrentMode] = useState('regular');
@@ -38,8 +61,7 @@
       const [showNewbie, setShowNewbie] = useState(true);
       const [showVeteran, setShowVeteran] = useState(true);
       const [enablePrediction, setEnablePrediction] = useState(true);
-      const [isFullscreen, setIsFullscreen] = useState(false);
-      const [showCoverage, setShowCoverage] = useState(false); // V16 新增防守區開關
+      const [showCoverage, setShowCoverage] = useState(true); 
       const timerRef = useRef(null);
 
       const menus = {
@@ -59,212 +81,215 @@
       const scenarioData = {
         // --- 常規雙打 ---
         '被動挑高球 (防守轉變)': {
-          situation: '我方原本處於前後進攻陣型，但 B 在後場遭到壓迫，被迫打出高遠球過渡。',
+          situation: '原本處於進攻陣型，但 B 遭壓迫被迫打出高遠球。',
           aStart: [325, 960], aEnd: [470, 1100], bStart: [150, 1250], bEnd: [180, 1100], 
           opp1Start: [325, 450], opp1End: [325, 600], opp2Start: [325, 250], opp2End: [325, 50],  
-          ballStart: [150, 1250], ballEnd: [325, 50], ballCurve: 150,
-          text: 'B 被迫挑高球，將進攻權拱手讓人。此時 A 與 B 必須「立刻」退向左右兩側的「平行防守點」，準備迎接對手的重殺。',
-          newbie: { pain: '前排球員挑球後停在原地看球，忘記該退防。', solve: '建立「挑球=後退」的肌肉記憶，前排盲退不回頭看隊友！' },
-          veteran: { pain: '退防時重心過高，面對劈殺來不及蹲下。', solve: '退防到位瞬間做 Split Step (啟動小跳)，準備轉化為橫向爆發力。' },
+          ball1Start: [150, 1250], ball1End: [325, 50], ball1Curve: 150,
+          text: 'B 挑高球將進攻權拱手讓人。A 與 B 必須立刻退向兩側平行防守點準備接殺。',
+          newbie: { pain: '挑球後停在原地看球，忘記退防。', solve: '建立「挑球=後退」的肌肉記憶，前排盲退不回頭看！' },
+          veteran: { pain: '退防時重心過高，來不及蹲下接殺。', solve: '退防到位瞬間做 Split Step，轉化為橫向爆發力。' },
           predictionLines: [{ end: [180, 1100], color: '#06b6d4', label: '重殺左路', curve: 0 }, { end: [470, 1100], color: '#ec4899', label: '重殺右路', curve: 0 }],
-          predictText: '對方獲得高遠球優勢，極大機率發動重殺 (路線 1/2)。我方重心壓低準備接殺。',
-          coverage: { a: 'M 325 690 L 584 690 L 584 1360 L 325 1360 Z', b: 'M 66 690 L 325 690 L 325 1360 L 66 1360 Z' } // A右, B左
+          predictText: '對方獲高遠球優勢極可能重殺。我方重心壓低準備。',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.splitBA.a, b: cov.splitBA.b }
         },
         '標準後殺前封 (維持進攻)': {
-          situation: '我方成功將球挑高到對手後場，形成完美的「我攻敵防」局面。',
+          situation: '我方成功將球挑高到對手後場，形成「我攻敵防」。',
           aStart: [325, 960], aEnd: [220, 960], bStart: [150, 1300], bEnd: [325, 1150], 
           opp1Start: [180, 400], opp1End: [180, 500], opp2Start: [470, 300], opp2End: [325, 300], 
-          ballStart: [150, 1300], ballEnd: [180, 500], ballCurve: 0,
-          text: 'B 在左後殺球後回踩中點。此時網前的 A 必須向左微調（雨刷式平移），封死對手最容易打出的直線擋網。',
-          newbie: { pain: '前排發呆，沒跟著後排殺球方向微調。', solve: '把背交給隊友，眼睛死盯對手網前準備攔截。' },
-          veteran: { pain: '後排連續殺球後回中點速度變慢。', solve: '殺球落地後，利用反作用力順勢將重心推回後排。' },
+          ball1Start: [150, 1300], ball1End: [180, 500], ball1Curve: 0,
+          text: 'B 左後殺球後回踩中點。網前 A 向左微調封死直線擋網。',
+          newbie: { pain: '前排發呆沒跟著後排殺球方向微調。', solve: '把背交給隊友，眼睛死盯對手網前準備攔截。' },
+          veteran: { pain: '後排殺球後回中點速度變慢。', solve: '落地後利用反作用力順勢將重心推回。' },
           predictionLines: [{ end: [220, 800], color: '#06b6d4', label: '直線擋網', curve: 0 }, { end: [470, 1250], color: '#ec4899', label: '對角挑球', curve: 50 }],
-          predictText: '對手接殺吃力，最可能擋出直線網前 (路線 1) 交由 A 撲殺；若勉強挑出弧線高球 (路線 2)，B 繼續進攻。',
-          coverage: { a: 'M 66 690 L 584 690 L 584 1050 L 66 1050 Z', b: 'M 66 1050 L 584 1050 L 584 1360 L 66 1360 Z' } // A前, B後
+          predictText: '對手最可能擋出直線交由 A 撲殺；若勉強挑斜線高球則 B 繼續進攻。',
+          coverageStart: { a: cov.splitBA.a, b: cov.splitBA.b }, coverageEnd: { a: cov.frontABackB.a, b: cov.frontABackB.b }
         },
         '網前放小球 (相持過渡)': {
           situation: '雙方在網前鬥小球，試圖迫使對方先將球挑高。',
           aStart: [250, 900], aEnd: [250, 850], bStart: [325, 1200], bEnd: [325, 1200], 
           opp1Start: [200, 500], opp1End: [250, 550], opp2Start: [470, 300], opp2End: [470, 300], 
-          ballStart: [250, 900], ballEnd: [250, 550], ballCurve: -20,
-          text: 'A 在左側網前放小球。放網後絕對不能後退，必須順勢向前微貼網，舉拍準備抓對手的回放小球。',
-          newbie: { pain: '放完小球後習慣性往後退，把網前優勢讓給對手。', solve: '放網後必須「貼網逼迫」，強迫對手只能起高球。' },
-          veteran: { pain: '過度貼網導致重心太死，被對手平推過頭頂。', solve: '保持前發球線後方半步，重心壓低，兼顧撲球與平推防守。' },
+          ball1Start: [250, 900], ball1End: [250, 550], ball1Curve: -20,
+          text: 'A 在網前放小球後絕不後退，必須順勢向前微貼網抓對手回放。',
+          newbie: { pain: '放完小球往後退，把網前優勢讓出。', solve: '放網後必須「貼網逼迫」，強迫對手起高球。' },
+          veteran: { pain: '過度貼網導致重心太死被推後場。', solve: '保持前發球線後方半步，兼顧撲球與平推防守。' },
           predictionLines: [{ end: [250, 800], color: '#06b6d4', label: '回放網前', curve: 0 }, { end: [470, 1250], color: '#ec4899', label: '挑大對角', curve: -50 }],
-          predictText: '對手若回放網前 (路線 1)，A 直接撲擊；若對手被迫挑出拋物線高球 (路線 2)，交給 B 重殺。',
-          coverage: { a: 'M 66 690 L 584 690 L 584 1000 L 66 1000 Z', b: 'M 66 1000 L 584 1000 L 584 1360 L 66 1360 Z' }
+          predictText: '對手若回放，A 直接撲擊；若被迫挑高球交給 B 重殺。',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.frontABackB.a, b: cov.frontABackB.b }
         },
         '接殺擋網前跟進 (防轉攻)': {
-          situation: '我方處於左右防守狀態，A 成功接到了對手的重殺球。',
+          situation: '我方處於防守狀態，A 成功接到對手的重殺球。',
           aStart: [180, 1100], aEnd: [180, 850], bStart: [470, 1100], bEnd: [325, 1200], 
           opp1Start: [325, 600], opp1End: [180, 580], opp2Start: [325, 200], opp2End: [325, 300], 
-          ballStart: [180, 1100], ballEnd: [180, 640], ballCurve: -30, 
-          text: 'A 將殺球巧妙地軟擋回網前，並「立刻跟進上網」。B 見狀需迅速退至後排中點，兩人瞬間從防守轉為進攻陣型！',
-          newbie: { pain: '擋網後不敢上網，浪費了極佳的轉攻機會。', solve: '建立「擋網=往前衝」的連貫動作。' },
-          veteran: { pain: '擋網品質差仍盲目上網，慘遭對手直接撲死。', solve: '精準判斷回球拋物線，貼網才上網，品質差時改以中場平抽處理。' },
+          ball1Start: [325, 600], ball1End: [180, 1100], ball1Curve: 0,
+          ball2End: [180, 640], ball2Curve: -30,
+          text: 'A 將殺球軟擋回網前並「立刻跟進上網」。B 迅速退至後排，瞬間轉為斜線防守進攻陣型！',
+          newbie: { pain: '擋網後不敢上網，浪費轉攻機會。', solve: '建立「擋網=往前衝」的連貫動作。' },
+          veteran: { pain: '擋網品質差仍盲目上網慘遭撲死。', solve: '精準判斷拋物線，品質差時改平抽。' },
           predictionLines: [{ end: [180, 1250], color: '#06b6d4', label: '被迫挑直線', curve: 40 }, { end: [470, 750], color: '#ec4899', label: '勾對角網前', curve: 0 }], 
-          predictText: '對手被迫上網救球，可能勉強挑高 (路線 1) 讓 B 攻擊；或以手法「勾對角」(路線 2) 擺脫，A 需保持警覺橫移。',
-          coverage: { a: 'M 66 690 L 584 690 L 584 1050 L 66 1050 Z', b: 'M 66 1050 L 584 1050 L 584 1360 L 66 1360 Z' }
+          predictText: '對手可能勉強挑高讓 B 攻擊；或勾對角擺脫，A 需保持警覺。',
+          coverageStart: { a: cov.splitAB.a, b: cov.splitAB.b }, coverageEnd: { a: cov.diagTL_BR_A_Front.a, b: cov.diagTL_BR_A_Front.b } // V22 斜切防守
         },
         '防守重殺平移 (鞏固防線)': {
-          situation: '對手在後場獲得進攻機會，起跳準備重殺。',
+          situation: '對手在後場獲得進攻機會，起跳準備重殺直線。',
           aStart: [180, 1100], aEnd: [160, 1050], bStart: [470, 1100], bEnd: [380, 1100], 
           opp1Start: [325, 600], opp1End: [150, 600], opp2Start: [150, 150], opp2End: [150, 150],
-          ballStart: [150, 150], ballEnd: [160, 1050], ballCurve: 0,
-          text: '對手從右後方重殺直線。A(直線方) 需往前微調迎前準備接殺；B(對角方) 則向中線靠攏協防中路。',
-          newbie: { pain: '兩人搶接中路球，導致嚴重的撞拍意外。', solve: '嚴格遵守防撞邏輯：「絕對中路 👉 正手拍優先」。' },
-          veteran: { pain: '過度專注平移，忽略對手突然的滑板吊球。', solve: '平移時重心保持在腳尖，保留往前衝刺救吊球的餘裕。' },
+          ball1Start: [150, 150], ball1End: [160, 1050], ball1Curve: 0,
+          text: 'A 往前微調準備接殺；B 向中線靠攏協防。B 的防守面積擴張扛下大斜線防區！',
+          newbie: { pain: '兩人搶接中路球導致嚴重撞拍。', solve: '嚴守防撞邏輯：「絕對中路 👉 正手拍優先」。' },
+          veteran: { pain: '過度專注平移，忽略對手滑板吊球。', solve: '重心保持在腳尖，保留往前衝刺餘裕。' },
           predictionLines: [{ end: [160, 750], color: '#06b6d4', label: '擋回網前', curve: 0 }, { end: [470, 150], color: '#ec4899', label: '平抽大對角', curve: 0 }],
-          predictText: 'A 接殺後，可選擇軟擋網前 (路線 1) 逼迫對手上網，或施力平抽大對角 (路線 2) 打亂對手陣型。',
-          coverage: { a: 'M 66 690 L 325 690 L 325 1360 L 66 1360 Z', b: 'M 325 690 L 584 690 L 584 1360 L 325 1360 Z' }
+          predictText: 'A 接殺後可軟擋逼迫對手上網，或平抽大對角打亂陣型。',
+          coverageStart: { a: cov.splitAB.a, b: cov.splitAB.b }, coverageEnd: { a: cov.defendSmashLeft.a, b: cov.defendSmashLeft.b }
         },
         '中場平抽擋 (扁平陣型)': {
           situation: '球速極快的平推相持，雙方都沒有起高球。',
           aStart: [180, 950], aEnd: [180, 950], bStart: [470, 950], bEnd: [470, 950],
           opp1Start: [180, 430], opp1End: [180, 450], opp2Start: [470, 430], opp2End: [470, 450], 
-          ballStart: [180, 950], ballEnd: [470, 430], ballCurve: 0,
-          text: '雙方中場互推。此時陣型呈現「扁平化」微平行站位，拍子必須舉高。誰被迫挑高誰就退防，誰壓下去了就跟進上網。',
-          newbie: { pain: '害怕球速，抽球時越退越後。', solve: '強迫自己踩在發球線上「以推代抽」，死都不退。' },
-          veteran: { pain: '抽球路線單一，被對手提早抓死。', solve: '拍面微調，將平推瞬間變為「軟擋空檔」，破壞對手節奏。' },
+          ball1Start: [180, 950], ball1End: [470, 430], ball1Curve: 0,
+          text: '雙方中場互推，陣型呈現扁平微平行站位。誰被迫挑高誰退防，誰壓下去就上網。',
+          newbie: { pain: '害怕球速，抽球時越退越後。', solve: '強迫踩在發球線上「以推代抽」，死都不退。' },
+          veteran: { pain: '抽球路線單一，被對手提早抓死。', solve: '拍面微調，平推瞬間變「軟擋空檔」。' },
           predictionLines: [{ end: [180, 950], color: '#06b6d4', label: '追身平抽', curve: 0 }, { end: [470, 950], color: '#ec4899', label: '壓迫反手', curve: 0 }],
-          predictText: '高速相持中，對手可能平抽追身 (路線 1) 或壓迫我方反手 (路線 2)，拍子必須舉高防護臉部與胸口。',
-          coverage: { a: 'M 66 690 L 325 690 L 325 1360 L 66 1360 Z', b: 'M 325 690 L 584 690 L 584 1360 L 325 1360 Z' }
+          predictText: '對手可能平抽追身或壓迫反手，拍子必須舉高防護。',
+          coverageStart: { a: cov.splitAB.a, b: cov.splitAB.b }, coverageEnd: { a: cov.splitAB.a, b: cov.splitAB.b }
         },
         '後殺切球上網 (主動輪轉)': {
-          situation: '我方後排 B 發現對手防守重心靠後，決定改變進攻節奏。',
+          situation: '我方後排 B 發現對手重心靠後，改變進攻節奏。',
           aStart: [325, 960], aEnd: [470, 1150], bStart: [150, 1300], bEnd: [150, 850],   
           opp1Start: [180, 300], opp1End: [150, 550], opp2Start: [470, 300], opp2End: [325, 350], 
-          ballStart: [150, 1300], ballEnd: [150, 600], ballCurve: 50,
-          text: 'B 吊切球後，直接跟隨球路衝向網前；A 只要餘光掃到 B 往前衝，必須立刻「交叉斜退」接管後場。',
-          newbie: { pain: '前排不知何時該後退，像木頭一樣擋住隊友動線。', solve: '不用回頭！餘光看到黑影衝過，立刻啟動交叉後撤。' },
-          veteran: { pain: '上網後被對手極限平推後場，導致被動。', solve: '上網不要撲太死，補位者必須保留力氣準備後撤。' },
+          ball1Start: [150, 1300], ball1End: [150, 600], ball1Curve: 50,
+          text: 'B 吊切球後直接跟隨衝向網前；A 餘光掃到 B 往前，立刻交叉斜退接管右後場防區。',
+          newbie: { pain: '前排不知該後退，擋住隊友動線。', solve: '不用回頭！餘光看到黑影衝過立刻交叉後撤。' },
+          veteran: { pain: '上網後被對手極限平推後場導致被動。', solve: '補位者必須保留力氣準備後撤。' },
           predictionLines: [{ end: [150, 750], color: '#06b6d4', label: '無力擋網', curve: 0 }, { end: [470, 1250], color: '#ec4899', label: '勉強挑對角', curve: 50 }],
-          predictText: '對手接吊球極度被動，若勉強擋網前 (路線 1) 會被 B 抓死；若挑對角高球 (路線 2)，A 可直接躍起重殺。',
-          coverage: { a: 'M 325 1050 L 584 1050 L 584 1360 L 66 1360 L 66 1050 Z', b: 'M 66 690 L 584 690 L 584 1050 L 66 1050 Z' } // A轉後, B轉前
+          predictText: '對手接吊球極度被動，若擋網前會被抓死；若挑對角高球，A 可重殺。',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.diagTL_BR_B_Front.a, b: cov.diagTL_BR_B_Front.b } // V22 斜切防守
         },
         '極端大對角補位 (拯救隊友)': {
-          situation: 'B 被對手壓迫到右後方絕對死角，身體已經失去平衡。',
+          situation: 'B 被對手壓迫到右後方絕對死角，失去平衡。',
           aStart: [325, 960], aEnd: [180, 1100], bStart: [550, 1350], bEnd: [400, 1200], 
           opp1Start: [180, 300], opp1End: [180, 500], opp2Start: [470, 300], opp2End: [325, 300], 
-          ballStart: [550, 1350], ballEnd: [325, 400], ballCurve: -50, 
-          text: 'B 勉強打出過渡球，此時左後方門戶大開。A 必須果斷放棄網前，直接斜線向後狂奔補位！',
-          newbie: { pain: '站在網前傻傻看著隊友跑死。', solve: '發現隊友嚴重失位，果斷放棄自己的防區進行救援。' },
-          veteran: { pain: 'A 補位時對手突然放對角網前小球，直接得分。', solve: 'B 的過渡球必須盡可能「挑高且深」，爭取 A 滯空判斷對手球路的準備時間，切忌打出半高不低的平快球。' },
+          ball1Start: [550, 1350], ball1End: [325, 400], ball1Curve: -50, 
+          text: 'B 勉強打出過渡球。A 必須果斷放棄網前，斜線向後狂奔補位接管左側大防區！',
+          newbie: { pain: '站在網前傻看著隊友跑死。', solve: '發現隊友失位，果斷放棄防區進行救援。' },
+          veteran: { pain: 'A 補位時對手突然放對角網前小球。', solve: 'B 的過渡球必須盡可能「挑高且深」爭取時間。' },
           predictionLines: [{ end: [180, 1100], color: '#06b6d4', label: '殺向空檔', curve: 0 }, { end: [325, 750], color: '#ec4899', label: '過渡中路', curve: 0 }],
-          predictText: '對手見 B 失位，極大機率重殺 A 剛補位的左側空檔 (路線 1)，A 需扛下這波猛烈攻擊！',
-          coverage: { a: 'M 66 690 L 325 690 L 325 1360 L 66 1360 Z', b: 'M 325 690 L 584 690 L 584 1360 L 325 1360 Z' } // 回歸平行防守
+          predictText: '對手見 B 失位，極大機率重殺 A 剛補位的空檔，A 需扛下攻擊！',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.splitAB.a, b: cov.splitAB.b } // 回歸平行防守
         },
         '兩腰突擊應對 (過渡轉輪轉)': {
-          situation: '我方原本為前後進攻陣型，但對手打出一記極為刁鑽的平快球穿過 A 身側，直逼左側中場邊線。',
+          situation: '對手打出極為刁鑽的平快球，直逼左側中場邊線。',
           aStart: [325, 888], aEnd: [400, 1200], bStart: [325, 1200], bEnd: [120, 950], 
           opp1Start: [180, 400], opp1End: [180, 550], opp2Start: [470, 300], opp2End: [325, 300], 
-          ballStart: [325, 1200], ballEnd: [120, 600], ballCurve: 40,
-          text: '後排 B 跨步上前勉強低手擊球，選擇軟擋網前並「利用慣性直接跟進上網」。前排 A 見狀立刻交叉後撤，完成完美輪轉！',
-          newbie: { pain: '前排 A 試圖後仰去撈已經飛過半身的平快球。', solve: '過半身不攔！前排立刻低頭閃躲讓出視線，果斷交給後排處理。' },
-          veteran: { pain: '後排 B 低手勉強平抽，結果掛網或被直接撲死。', solve: '降低重心改以軟擋過渡，化解危機並重組陣型。' },
+          ball1Start: [180, 500], ball1End: [120, 950], ball1Curve: 0,
+          ball2End: [120, 600], ball2Curve: 40,
+          text: '後排 B 跨步上前低手擊球軟擋網前並「跟進上網」。前排 A 見狀立刻交叉後撤，切換斜線防守網！',
+          newbie: { pain: '前排 A 試圖後仰撈已過半身的球。', solve: '過半身不攔！立刻低頭閃躲交給後排。' },
+          veteran: { pain: '後排 B 勉強平抽結果掛網。', solve: '降低重心改以軟擋過渡，化解危機並重組。' },
           predictionLines: [{ end: [180, 1100], color: '#06b6d4', label: '被迫挑直線', curve: 40 }, { end: [470, 1150], color: '#ec4899', label: '被迫挑對角', curve: 40 }],
-          predictText: 'B 的軟擋成功迫使對手由下往上挑球。無論挑直線 (路線 1) 或對角 (路線 2)，A 皆已退至後場準備重殺！',
-          coverage: { a: 'M 66 1050 L 584 1050 L 584 1360 L 66 1360 Z', b: 'M 66 690 L 584 690 L 584 1050 L 66 1050 Z' } // A轉後, B轉前
+          predictText: 'B 軟擋迫使對手挑球。無論直線或對角，A 皆已退至後場準備重殺！',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.diagTL_BR_B_Front.a, b: cov.diagTL_BR_B_Front.b } // V22 斜切防守
         },
 
         // --- 混雙專屬 ---
         '女前男後 (標準進攻)': {
-          situation: '混雙最理想的陣型：男生在後場獲取高遠球，準備重殺。',
+          situation: '混雙最理想陣型：男生在後場獲取高遠球，準備重殺。',
           aStart: [325, 850], aEnd: [325, 850], bStart: [325, 1250], bEnd: [325, 1250], 
           opp1Start: [180, 400], opp1End: [180, 400], opp2Start: [470, 400], opp2End: [470, 400], 
-          ballStart: [325, 1250], ballEnd: [180, 400], ballCurve: 0,
-          text: '男隊員 (B) 負責後場大面積火力覆蓋，女隊員 (A) 緊逼網前 T 字口，負責攔截對手勉強擋出的平推球。',
-          newbie: { pain: '女生在網前怕被打到而一直往後退。', solve: '勇敢貼網，拍子舉在白帶上方，只負責撲壓過網的球。' },
-          veteran: { pain: '男生殺球太淺太平，導致女生被對手平抽追身。', solve: '殺球必須追求「尖」強迫對手起高球，保護網前的女伴。' },
+          ball1Start: [325, 1250], ball1End: [180, 400], ball1Curve: 0,
+          text: '男(B)負責後場大面積火力，女(A)緊逼網前 T 字口，攔截平推球。',
+          newbie: { pain: '女生在網前怕被打到而一直往後退。', solve: '勇敢貼網，拍子舉在白帶上方撲壓。' },
+          veteran: { pain: '男生殺球太淺，導致女生被平抽追身。', solve: '殺球必須追求「尖」強迫對手起高球。' },
           predictionLines: [{ end: [325, 800], color: '#06b6d4', label: '擋回中路', curve: 0 }, { end: [470, 1300], color: '#ec4899', label: '挑大對角', curve: 50 }],
-          predictText: '對手若擋回網前 (路線 1) 由 A 撲殺；若挑向大對角 (路線 2)，B 需大範圍移動進攻。',
-          coverage: { a: 'M 150 690 L 500 690 L 500 950 L 150 950 Z', b: 'M 66 950 L 584 950 L 584 1360 L 66 1360 Z' } // A網前小方塊, B包辦中後場
+          predictText: '對手若擋回網前由 A 撲殺；若挑向大對角，B 大範圍移動進攻。',
+          coverageStart: { a: cov.mixedV.a, b: cov.mixedV.b }, coverageEnd: { a: cov.mixedV.a, b: cov.mixedV.b }
         },
         '混雙防守陣型 (女蹲前/男包後)': {
-          situation: '我方被迫挑高球，對手準備重殺。',
-          aStart: [325, 850], aEnd: [325, 850], bStart: [325, 1200], bEnd: [325, 1150], 
-          opp1Start: [180, 300], opp1End: [180, 300], opp2Start: [470, 300], opp2End: [470, 300], 
-          ballStart: [180, 300], ballEnd: [325, 1150], ballCurve: 0,
-          text: '與一般雙打不同，混雙防守時女隊員 (A) 絕不能退到後場，而是蹲守前場 T 字口防吊球。男隊員 (B) 則一人包辦後場大面積重防守。',
-          newbie: { pain: '女生防守時跟著退到後場，導致直接撞拍。', solve: '女生絕不退後場！蹲低保護網前，將後場全權交給男生。' },
-          veteran: { pain: '男生防守面積過大導致跑不到位。', solve: '男生站位需隨對手殺球點偏移，利用滑步擴大防守半徑。' },
+          situation: '我方被迫挑高球，對手準備重殺直線邊線。',
+          aStart: [325, 850], aEnd: [325, 850], bStart: [325, 1200], bEnd: [250, 1150], 
+          opp1Start: [180, 450], opp1End: [180, 450], opp2Start: [470, 300], opp2End: [470, 300], 
+          ball1Start: [180, 450], ball1End: [180, 1050], ball1Curve: 0,
+          text: '女(A)絕不退後場，蹲守前場防吊球。男(B)必須橫移大跨步，一人包辦後場大面積重防守。',
+          newbie: { pain: '女生跟著退到後場，導致撞拍。', solve: '女生絕不退後場！蹲低保護網前即可。' },
+          veteran: { pain: '男生防守面積過大導致跑不到位。', solve: '男生站位需隨對手殺球點偏移，利用滑步擴大半徑。' },
           predictionLines: [{ end: [180, 800], color: '#06b6d4', label: '吊網前球', curve: 20 }, { end: [470, 1250], color: '#ec4899', label: '挑對角高球', curve: 40 }],
-          predictText: 'B 接殺後，可選擇挑向對角 (路線 2) 重新組織防守；若對手選擇吊球 (路線 1) 則由前排的 A 直接處理。',
-          coverage: { a: 'M 150 690 L 500 690 L 500 950 L 150 950 Z', b: 'M 66 950 L 584 950 L 584 1360 L 66 1360 Z' }
+          predictText: 'B 接殺後可挑向對角重新組織；若對手吊球則由 A 直接處理。',
+          coverageStart: { a: cov.mixedV.a, b: cov.mixedV.b }, coverageEnd: { a: cov.mixedV.a, b: cov.mixedV.b }
         },
         '女生被迫退後場 (極限輪轉)': {
           situation: '對手極度針對女隊員(A)，將球平推逼至左側後場深處。',
-          aStart: [180, 1100], aEnd: [180, 850], bStart: [325, 950], bEnd: [325, 1200], 
+          aStart: [180, 1100], aEnd: [180, 850], bStart: [325, 950], bEnd: [450, 1200], 
           opp1Start: [325, 450], opp1End: [180, 600], opp2Start: [325, 150], opp2End: [325, 300], 
-          ballStart: [180, 1100], ballEnd: [180, 600], ballCurve: 60,
-          text: '女隊員(A)在後場勉強過渡後，必須「立刻直線往前衝」回網前；男隊員(B)則同步斜退至後回中點，強行接管後場！',
-          newbie: { pain: '女生在後場打完球後，停在原地不知所措。', solve: '女生在後場過渡完，唯一任務就是低頭往前場跑！' },
-          veteran: { pain: '男生等女生回網前了才退，導致後場大空檔。', solve: '男生必須在女生擊球瞬間就啟動斜退，強行換位。' },
+          ball1Start: [180, 1100], ball1End: [180, 600], ball1Curve: 60,
+          text: '女(A)在後場過渡後「立刻直線往前衝」；男(B)則同步往右後方斜退，強行接管後場！',
+          newbie: { pain: '女生打完球後，停在原地不知所措。', solve: '女生後場過渡完，唯一任務就是低頭往前場跑！' },
+          veteran: { pain: '男生等女生回網前才退，導致大空檔。', solve: '男生必須在女生擊球瞬間就啟動斜退。' },
           predictionLines: [{ end: [470, 1100], color: '#06b6d4', label: '挑對角後場', curve: 40 }, { end: [180, 850], color: '#ec4899', label: '放直線網前', curve: 0 }],
-          predictText: '對手若挑對角 (路線 1) 剛好落入已退防的 B 掌控；若放網前 (路線 2) 則由衝上網的 A 處理！',
-          coverage: { a: 'M 150 690 L 500 690 L 500 950 L 150 950 Z', b: 'M 66 950 L 584 950 L 584 1360 L 66 1360 Z' }
+          predictText: '對手若挑對角落入已退防的 B 掌控；若放網前則由衝上網的 A 處理！',
+          coverageStart: { a: cov.splitAB.a, b: cov.splitAB.b }, coverageEnd: { a: cov.diagTL_BR_A_Front.a, b: cov.diagTL_BR_A_Front.b } // V22 斜切防守
         },
         '男生殺球上網 (女生補後)': {
-          situation: '男隊員(B)在後場殺球後，發現對手回球質量極差，飄向網前。',
+          situation: '男隊員(B)後場殺球後，發現對手回球質量極差。',
           aStart: [325, 888], aEnd: [470, 1100], bStart: [150, 1250], bEnd: [180, 850], 
           opp1Start: [180, 450], opp1End: [180, 580], opp2Start: [470, 300], opp2End: [325, 300], 
-          ballStart: [150, 1250], ballEnd: [180, 600], ballCurve: 0,
-          text: 'B 殺球後直接衝上網準備撲擊。女隊員(A)見狀必須立刻交叉後撤防守，短暫形成「男前女後」的防守陣型！',
-          newbie: { pain: '女生死站網前，導致後場完全放空。', solve: '混雙女生也要具備餘光觀察力，男生上來妳就必須退！' },
-          veteran: { pain: '男生衝太猛，導致被對手推過頭頂。', solve: '衝網前必須保留煞車空間，否則容易被反推後場死角。' },
+          ball1Start: [150, 1250], ball1End: [180, 600], ball1Curve: 0,
+          text: 'B 殺球後直接衝上網準備撲擊。女(A)見狀必須立刻交叉後撤防守，短暫形成斜切防線！',
+          newbie: { pain: '女生死站網前，導致後場完全放空。', solve: '混雙女生也要具備餘光，男生上來妳就必須退！' },
+          veteran: { pain: '男生衝太猛，導致被對手推過頭頂。', solve: '衝網前必須保留煞車空間，防反推後場。' },
           predictionLines: [{ end: [180, 1250], color: '#06b6d4', label: '被迫挑直線', curve: 40 }, { end: [470, 750], color: '#ec4899', label: '勾對角網前', curve: 0 }],
-          predictText: '對手極度被動，若勉強挑高 (路線 1) 交由已後退的 A 防守；若勾對角 (路線 2) B 需橫向攔截。',
-          coverage: { a: 'M 325 1050 L 584 1050 L 584 1360 L 66 1360 L 66 1050 Z', b: 'M 66 690 L 584 690 L 584 1050 L 66 1050 Z' }
+          predictText: '對手極度被動，勉強挑高交由 A 防守；勾對角 B 需橫向攔截。',
+          coverageStart: { a: cov.mixedV.a, b: cov.mixedV.b }, coverageEnd: { a: cov.diagTL_BR_B_Front.a, b: cov.diagTL_BR_B_Front.b } // V22 斜切防守
         },
 
         // --- 發球落點博弈 ---
         '發內角 T 字口 (壓迫角度)': {
-          situation: '右側發球局。A 選擇將球發向對手前發球線的內角。',
+          situation: '右側發球局。A 發向對手前發球線的內角。',
           aStart: [360, 920], aEnd: [360, 920], bStart: [325, 1200], bEnd: [325, 1200], 
           opp1Start: [280, 460], opp1End: [280, 460], opp2Start: [325, 200], opp2End: [325, 200], 
-          ballStart: [360, 920], ballEnd: [280, 480], ballCurve: 20, 
-          text: '落點在正中央，大幅壓縮接發球員的回球角度，是最穩定的起手式。發完球後 A 必須立刻舉拍。',
-          newbie: { pain: '發完球拍子放下，被對手推撲追身。', solve: '發向中路對手極易回推中路，拍子必須立刻舉起防臉。' },
-          veteran: { pain: '發球弧度過高，被搶高點撲殺。', solve: '追求球「擦網而過」，落點精準壓在前發球線上。' },
+          ball1Start: [360, 920], ball1End: [280, 480], ball1Curve: 20, 
+          text: '落點在正中央，大幅壓縮接發球員角度，是最穩定的起手式。',
+          newbie: { pain: '發完球拍子放下，被推撲追身。', solve: '發向中路極易回推中路，拍子必須立刻舉起防臉。' },
+          veteran: { pain: '發球弧度過高，被搶高點撲殺。', solve: '追求球「擦網而過」，精準壓在前發球線上。' },
           predictionLines: [{ end: [325, 800], color: '#06b6d4', label: '推直線中路', curve: 0 }, { end: [180, 1200], color: '#ec4899', label: '挑斜線邊角', curve: 40 }],
-          predictText: '對手最可能推直線中路 (路線 1)，A 必須舉拍攔截；若挑斜線 (路線 2)，B 發動攻擊。',
-          coverage: { a: 'M 66 690 L 584 690 L 584 1000 L 66 1000 Z', b: 'M 66 1000 L 584 1000 L 584 1360 L 66 1360 Z' }
+          predictText: '對手最可能推直線中路由 A 攔截；若挑斜線，B 發動攻擊。',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.frontABackB.a, b: cov.frontABackB.b }
         },
         '發外角短球 (拉開中路)': {
-          situation: '右側發球局。A 發現對手站位偏中線，決定發向外角邊線。',
+          situation: '右側發球局。A 決定發向外角邊線。',
           aStart: [360, 920], aEnd: [360, 920], bStart: [325, 1200], bEnd: [400, 1200], 
           opp1Start: [280, 460], opp1End: [150, 480], opp2Start: [325, 200], opp2End: [325, 200], 
-          ballStart: [360, 920], ballEnd: [150, 480], ballCurve: 30, 
-          text: '強迫接發球員向外大跨步，瞬間拉開對手兩人之間的中路防守空洞。',
-          newbie: { pain: '發外角球速慢，被對手從容跨步撲殺。', solve: '發外角必須帶有「平快」節奏，不能讓球飛太久。' },
-          veteran: { pain: '拉開對手後，我方後排沒意識到空檔。', solve: '發外角前先打暗號，讓後排隊友 B 提前準備突擊中路。' },
+          ball1Start: [360, 920], ball1End: [150, 480], ball1Curve: 30, 
+          text: '強迫對手向外大跨步。此時 A 必須防守右側斜線，B 向右微調防守左後大面積，形成斜切防網。',
+          newbie: { pain: '發外角球速慢，被對手從容撲殺。', solve: '發外角必須帶有「平快」節奏，不讓球飛太久。' },
+          veteran: { pain: '拉開對手後，後排沒意識到空檔。', solve: '發前先打暗號，讓 B 提前準備突擊中路。' },
           predictionLines: [{ end: [150, 800], color: '#06b6d4', label: '推直線邊線', curve: 0 }, { end: [325, 1200], color: '#ec4899', label: '勾中路空檔', curve: -30 }],
-          predictText: '對手重心不穩，可能推直線 (路線 1) 由 A 封堵；或勾回中路 (路線 2)，B 直接突擊空檔！',
-          coverage: { a: 'M 66 690 L 584 690 L 584 1000 L 66 1000 Z', b: 'M 66 1000 L 584 1000 L 584 1360 L 66 1360 Z' }
+          predictText: '對手重心不穩，可能推直線由 A 封堵；或勾回中路 B 直接突擊！',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.diagTR_BL_A_Front.a, b: cov.diagTR_BL_A_Front.b } // V22 斜切防守
         },
         '偷發後場 (破壞重心)': {
-          situation: '右側發球局。對手接發站位太前且重心往前壓，準備撲球。',
+          situation: '右側發球。對手接發站位太前且重心往前壓。',
           aStart: [360, 920], aEnd: [360, 1000], bStart: [325, 1200], bEnd: [325, 1200], 
           opp1Start: [280, 460], opp1End: [280, 150], opp2Start: [450, 250], opp2End: [450, 250], 
-          ballStart: [360, 920], ballEnd: [280, 150], ballCurve: 100, 
-          text: '突然偷發高遠球至後場，強迫對手急速後仰。A 發完球後必須稍微後退半步，準備攔截過渡球。',
-          newbie: { pain: '偷發後場被對手輕鬆識破重殺。', solve: '發球動作必須與發短球完全一致，利用手腕瞬間發力。' },
-          veteran: { pain: '發完球傻站網前，被對手回抽追身。', solve: '偷發後場後，A 的防禦縱深必須加大。' },
+          ball1Start: [360, 920], ball1End: [280, 150], ball1Curve: 100, 
+          text: '突然偷發高遠球，強迫對手急速後仰。A 發完必須稍微後退，準備攔截。',
+          newbie: { pain: '偷發後場被對手輕鬆識破重殺。', solve: '發球動作必須與發短球完全一致，利用手腕發力。' },
+          veteran: { pain: '發完球傻站網前被回抽追身。', solve: '偷發後場後，A 的防禦縱深必須加大。' },
           predictionLines: [{ end: [325, 850], color: '#06b6d4', label: '軟擋中路', curve: 0 }, { end: [180, 1100], color: '#ec4899', label: '勉強殺球', curve: 0 }],
-          predictText: '對手急速後仰，只能勉強軟擋 (路線 1) 或無力殺球 (路線 2)，我方已做好防反準備。',
-          coverage: { a: 'M 66 690 L 584 690 L 584 1050 L 66 1050 Z', b: 'M 66 1050 L 584 1050 L 584 1360 L 66 1360 Z' }
+          predictText: '對手急速後仰，只能勉強軟擋或無力殺球，我方做好防反準備。',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.frontABackB.a, b: cov.frontABackB.b }
         },
         '接發推撲上網 (強勢搶攻)': {
-          situation: '對手右側發球。我方 A (右半場) 抓準對手發球偏高。',
+          situation: '對手發球偏高，我方 A 抓到機會。',
           aStart: [420, 920], aEnd: [420, 800], bStart: [230, 1200], bEnd: [325, 1100], 
           opp1Start: [230, 460], opp1End: [230, 460], opp2Start: [325, 200], opp2End: [325, 200], 
-          ballStart: [230, 460], ballEnd: [420, 900], ballCurve: 20, 
-          text: 'A 直接將球平推壓制對手兩腰，並「瞬間上網」，強迫進入進攻輪轉，B 則補位後場。',
-          newbie: { pain: '接發球總是習慣把球挑高。', solve: '接發球拍子必須高舉過白帶，有機會就往下壓，絕不起高球。' },
-          veteran: { pain: '推撲完沒有連貫動作，被對手輕易回擋。', solve: '推球後利用身體慣性直接貼網，讓 B 負責後場抓對手平抽。' },
+          ball1Start: [230, 460], ball1End: [420, 850], ball1Curve: 20, 
+          ball2End: [150, 400], ball2Curve: 0,
+          text: 'A 接發直接平推壓制兩腰並「瞬間上網」強迫進入進攻，B 補位後場。',
+          newbie: { pain: '接發球總是習慣把球挑高。', solve: '拍子必須高舉過白帶，有機會就往下壓絕不起高球。' },
+          veteran: { pain: '推撲完沒連貫動作被輕易回擋。', solve: '推球後利用身體慣性直接貼網，讓 B 抓平抽。' },
           predictionLines: [{ end: [420, 800], color: '#06b6d4', label: '被迫擋網', curve: 0 }, { end: [180, 1250], color: '#ec4899', label: '被迫挑高', curve: 40 }],
-          predictText: 'A 的推撲造成對手極大壓力，若勉強擋網 (路線 1) A 直接撲死；若挑高 (路線 2) 則交給 B。',
-          coverage: { a: 'M 66 690 L 584 690 L 584 1000 L 66 1000 Z', b: 'M 66 1000 L 584 1000 L 584 1360 L 66 1360 Z' }
+          predictText: 'A 推撲造成極大壓力，勉強擋網 A 直接撲死；挑高則交給 B。',
+          coverageStart: { a: cov.frontABackB.a, b: cov.frontABackB.b }, coverageEnd: { a: cov.frontABackB.a, b: cov.frontABackB.b }
         }
       };
 
@@ -308,13 +333,12 @@
       };
 
       const currentData = scenarioData[scenario] || scenarioData['被動挑高球 (防守轉變)'];
+      const predictOrigin = currentData.ball2End ? currentData.ball2End : currentData.ball1End;
 
-      // V16 繪製多箭頭虛線元件
       const PathWithArrows = ({ startX, startY, endX, endY, color, dash, isCurve = false, curveVal = 0, delay = "1.0s", opacity = 1 }) => {
         const dx = endX - startX; const dy = endY - startY;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-        const numArrows = Math.floor(dist / 60); // 每 60px 一個箭頭
+        const numArrows = Math.floor(dist / 60); 
         
         let pathD = `M ${startX} ${startY} L ${endX} ${endY}`;
         let cx = 0, cy = 0;
@@ -325,16 +349,10 @@
         }
 
         const getPointOnQuadraticCurve = (t, p0x, p0y, p1x, p1y, p2x, p2y) => {
-            const mt = 1 - t;
-            const x = mt*mt*p0x + 2*mt*t*p1x + t*t*p2x;
-            const y = mt*mt*p0y + 2*mt*t*p1y + t*t*p2y;
-            return {x, y};
+            const mt = 1 - t; return { x: mt*mt*p0x + 2*mt*t*p1x + t*t*p2x, y: mt*mt*p0y + 2*mt*t*p1y + t*t*p2y };
         };
-        
         const getAngleOnQuadraticCurve = (t, p0x, p0y, p1x, p1y, p2x, p2y) => {
-            const dx = 2*(1-t)*(p1x - p0x) + 2*t*(p2x - p1x);
-            const dy = 2*(1-t)*(p1y - p0y) + 2*t*(p2y - p1y);
-            return Math.atan2(dy, dx) * 180 / Math.PI;
+            return Math.atan2(2*(1-t)*(p1y - p0y) + 2*t*(p2y - p1y), 2*(1-t)*(p1x - p0x) + 2*t*(p2x - p1x)) * 180 / Math.PI;
         };
 
         const arrows = [];
@@ -343,13 +361,13 @@
             if (isCurve && curveVal !== 0) {
                 const pt = getPointOnQuadraticCurve(t, startX, startY, cx, cy, endX, endY);
                 const ang = getAngleOnQuadraticCurve(t, startX, startY, cx, cy, endX, endY);
-                arrows.push(<polygon key={i} points="0,-4 8,0 0,4" fill={color} transform={`translate(${pt.x}, ${pt.y}) rotate(${ang})`} opacity={opacity} style={{ transition: `opacity 0.6s ${delay}` }} />);
+                arrows.push(<polygon key={i} points="0,-6 12,0 0,6" fill={color} transform={`translate(${pt.x}, ${pt.y}) rotate(${ang})`} opacity={opacity} style={{ transition: `opacity 0.6s ${delay}` }} />);
             } else {
                 const ptX = startX + dx * t; const ptY = startY + dy * t;
-                arrows.push(<polygon key={i} points="0,-4 8,0 0,4" fill={color} transform={`translate(${ptX}, ${ptY}) rotate(${angle})`} opacity={opacity} style={{ transition: `opacity 0.6s ${delay}` }} />);
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                arrows.push(<polygon key={i} points="0,-6 12,0 0,6" fill={color} transform={`translate(${ptX}, ${ptY}) rotate(${angle})`} opacity={opacity} style={{ transition: `opacity 0.6s ${delay}` }} />);
             }
         }
-        
         return (
             <g>
                 <path d={pathD} fill="none" stroke={color} strokeWidth="3" strokeDasharray={dash} opacity={opacity} style={{ transition: `opacity 0.6s ${delay}` }} />
@@ -365,41 +383,41 @@
           <g key={`pred-${idx}`} className="animate-fade-in">
             <PathWithArrows startX={start[0]} startY={start[1]} endX={line.end[0]} endY={line.end[1]} color={line.color} dash="10 5" isCurve={line.curve !== 0} curveVal={line.curve || 0} delay="0s" opacity={0.9} />
             <circle cx={midX} cy={midY} r="18" fill={line.color} stroke="#fff" strokeWidth="2" opacity="1" />
-            <text x={midX} y={midY} fontSize="18" fill="#ffffff" textAnchor="middle" dominantBaseline="central" fontWeight="bold">{idx+1}</text>
+            <text x={midX} y={midY} fontSize="16" fill="#ffffff" textAnchor="middle" dominantBaseline="central" fontWeight="bold">{idx+1}</text>
           </g>
         );
       };
 
-      const renderBallPath = () => {
-        const startX = currentData.ballStart[0]; const startY = currentData.ballStart[1];
-        const endX = isPlaying ? currentData.ballEnd[0] : startX;
-        const endY = isPlaying ? currentData.ballEnd[1] : startY;
-        const curve = currentData.ballCurve || 0;
-
-        if (scenario === '接發推撲上網 (強勢搶攻)') {
-          const oppStartX = 230; const oppStartY = 460;
-          const oppEndX = 420; const oppEndY = 900;
-          const pushEndX = isPlaying ? 150 : oppEndX;
-          const pushEndY = isPlaying ? 400 : oppEndY;
-          return (
-            <g>
-              <PathWithArrows startX={oppStartX} startY={oppStartY} endX={oppEndX} endY={oppEndY} color="#facc15" dash="8" isCurve={true} curveVal={20} delay="0s" opacity={isPlaying ? 0 : 1} />
-              <PathWithArrows startX={oppEndX} startY={oppEndY} endX={pushEndX} endY={pushEndY} color="#facc15" dash="8" isCurve={false} delay="0.2s" opacity={isPlaying ? 1 : 0} />
-            </g>
-          );
+      const renderBall = () => {
+        const b1S = currentData.ball1Start; const b1E = currentData.ball1End;
+        const b2E = currentData.ball2End;
+        const c1 = currentData.ball1Curve || 0; const c2 = currentData.ball2Curve || 0;
+        
+        if (b2E) {
+            return (
+                <g>
+                    <PathWithArrows startX={b1S[0]} startY={b1S[1]} endX={b1E[0]} endY={b1E[1]} color="#facc15" dash="8" isCurve={c1!==0} curveVal={c1} delay="0s" opacity={isPlaying ? 0 : 1} />
+                    <PathWithArrows startX={b1E[0]} startY={b1E[1]} endX={b2E[0]} endY={b2E[1]} color="#facc15" dash="8" isCurve={c2!==0} curveVal={c2} delay="0.4s" opacity={isPlaying ? 1 : 0} />
+                    <circle cx={isPlaying ? b1E[0] : b1S[0]} cy={isPlaying ? b1E[1] : b1S[1]} r="12" fill="#ffffff" stroke="#000" strokeWidth="3" style={{transition: 'cx 0.4s ease-out, cy 0.4s ease-out', opacity: isPlaying ? 0 : 1}} />
+                    <circle cx={isPlaying ? b2E[0] : b1E[0]} cy={isPlaying ? b2E[1] : b1E[1]} r="12" fill="#ffffff" stroke="#000" strokeWidth="3" style={{transition: 'cx 0.4s ease-out 0.4s, cy 0.4s ease-out 0.4s', opacity: isPlaying ? 1 : 0}} />
+                </g>
+            );
         }
-
-        return <PathWithArrows startX={startX} startY={startY} endX={endX} endY={endY} color="#facc15" dash="8" isCurve={curve !== 0} curveVal={curve} delay="0s" opacity={1} />;
+        return (
+            <g>
+                <PathWithArrows startX={b1S[0]} startY={b1S[1]} endX={b1E[0]} endY={b1E[1]} color="#facc15" dash="8" isCurve={c1!==0} curveVal={c1} delay="0s" opacity={1} />
+                <circle cx={isPlaying ? b1E[0] : b1S[0]} cy={isPlaying ? b1E[1] : b1S[1]} r="12" fill="#ffffff" stroke="#000" strokeWidth="3" opacity={isPlaying ? 1 : 0} style={{transition: 'cx 0.4s ease-out, cy 0.4s ease-out'}} />
+            </g>
+        );
       };
 
       const renderPlayer = (start, end, color, label, isOpponent) => {
-        const x = isPlaying ? end[0] : start[0];
-        const y = isPlaying ? end[1] : start[1];
+        const x = isPlaying ? end[0] : start[0]; const y = isPlaying ? end[1] : start[1];
         let racketXOffset = isOpponent ? -18 : 18;
         return (
           <g>
-            <circle cx={start[0]} cy={start[1]} r="22" fill="none" stroke={color} strokeWidth="3" strokeDasharray="6" opacity={isPlaying ? 1 : 0} style={{ transition: 'opacity 0.6s 1.0s' }} />
-            <PathWithArrows startX={start[0]} startY={start[1]} endX={end[0]} endY={end[1]} color={color} dash="6" delay="1.0s" opacity={isPlaying ? 1 : 0} />
+            <circle cx={start[0]} cy={start[1]} r="22" fill="none" stroke={color} strokeWidth="3" strokeDasharray="6" opacity={isPlaying ? 1 : 0} style={{ transition: 'opacity 0.2s 0.4s' }} />
+            <PathWithArrows startX={start[0]} startY={start[1]} endX={end[0]} endY={end[1]} color={color} dash="6" delay="0.4s" opacity={isPlaying ? 0.7 : 0} />
             <g className="anim-player-group" style={{ transform: `translate(${x}px, ${y}px)` }}>
               <circle cx="0" cy="0" r="25" fill={color} stroke="#ffffff" strokeWidth="3" className="shadow-[3px_3px_0px_0px_rgba(0,0,0,0.5)]" />
               <text x="0" y="0" fontSize="22" fill="#ffffff" textAnchor="middle" dominantBaseline="central" fontWeight="bold">{label}</text>
@@ -411,94 +429,95 @@
 
       return (
         <React.Fragment>
-          <div className={`flex flex-col lg:flex-row w-full min-h-screen lg:h-screen lg:overflow-hidden p-3 lg:p-6 gap-5 lg:gap-6 box-border font-sans pb-24 lg:pb-6 ${animEnabled ? 'anim-enabled' : 'no-anim'}`}>
+          <div className={`flex flex-col lg:flex-row w-full min-h-screen lg:h-screen lg:overflow-hidden p-4 gap-4 box-border pb-24 lg:pb-4 ${animEnabled ? 'anim-enabled' : 'no-anim'}`}>
             
             {/* ================= 左側面板 ================= */}
-            {!isFullscreen && (
-            <div className="w-full lg:w-[360px] flex flex-col gap-5 shrink-0 lg:h-full lg:overflow-hidden">
+            <div className="w-full lg:w-[380px] flex flex-col gap-4 shrink-0 lg:h-full lg:overflow-hidden">
               <div className="pro-card flex flex-col relative overflow-hidden shrink-0">
-                <div className="absolute top-0 right-0 bg-[#0f172a] text-[#fbbf24] font-black px-3 py-1 text-xs rounded-bl-xl z-10">PRO V16</div>
-                <h1 className="text-xl font-black mb-0 pb-3 border-b-[3px] border-[#0f172a] text-center bg-[#fbbf24] p-4 tracking-wide">🏸 雙打戰術指揮中心</h1>
+                <div className="absolute top-0 right-0 bg-indigo-600 text-white font-black px-4 py-1.5 text-xs rounded-bl-xl z-10 shadow-sm">PRO V22</div>
+                <h1 className="text-xl font-black mb-0 pb-3 border-b border-slate-200 text-center bg-white p-4 tracking-wide text-slate-800">🏸 雙打戰術指揮中心</h1>
                 
-                <div className="flex w-full border-b-[3px] border-[#0f172a]">
-                  <button onClick={() => handleModeChange('regular')} className={`flex-1 py-3 font-black text-sm border-r-[3px] border-[#0f172a] transition-colors ${currentMode === 'regular' ? 'pro-tab-active' : 'pro-tab-inactive'}`}>🏸 常規</button>
-                  <button onClick={() => handleModeChange('mixed')} className={`flex-1 py-3 font-black text-sm border-r-[3px] border-[#0f172a] transition-colors ${currentMode === 'mixed' ? 'pro-tab-active' : 'pro-tab-inactive'}`}>👫 混雙</button>
-                  <button onClick={() => handleModeChange('serve')} className={`flex-1 py-3 font-black text-sm transition-colors ${currentMode === 'serve' ? 'pro-tab-active' : 'pro-tab-inactive'}`}>🎯 發球</button>
+                <div className="flex w-full border-b border-slate-200 bg-slate-50">
+                  <button onClick={() => handleModeChange('regular')} className={`flex-1 py-3 font-black text-[15px] border-r border-slate-200 transition-colors ${currentMode === 'regular' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>🏸 常規</button>
+                  <button onClick={() => handleModeChange('mixed')} className={`flex-1 py-3 font-black text-[15px] border-r border-slate-200 transition-colors ${currentMode === 'mixed' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>👫 混雙</button>
+                  <button onClick={() => handleModeChange('serve')} className={`flex-1 py-3 font-black text-[15px] transition-colors ${currentMode === 'serve' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>🎯 發球</button>
                 </div>
 
-                <div className="p-5">
-                  <label className="block text-sm font-black text-slate-800 mb-2">演練情境</label>
-                  <select className="w-full p-3 border-[3px] border-[#0f172a] bg-white font-bold text-sm focus:outline-none focus:ring-4 focus:ring-[#fbbf24] rounded-lg cursor-pointer transition-shadow shadow-[3px_3px_0px_0px_#0f172a]" value={scenario} onChange={handleScenarioChange}>
+                <div className="p-4">
+                  <label className="block text-sm font-black text-slate-600 mb-2">演練情境</label>
+                  <select className="w-full p-2.5 border border-slate-300 bg-white font-bold text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-xl cursor-pointer shadow-sm" value={scenario} onChange={handleScenarioChange}>
                     {Object.entries(menus[currentMode]).map(([category, scenarios]) => (
-                      <optgroup key={category} label={category} className="font-black text-slate-500 bg-slate-100">
-                        {scenarios.map(scen => <option key={scen} value={scen} className="font-bold text-[#0f172a] bg-white">{scen}</option>)}
+                      <optgroup key={category} label={category} className="font-black text-slate-400 bg-slate-50">
+                        {scenarios.map(scen => <option key={scen} value={scen} className="font-bold text-slate-800 bg-white">{scen}</option>)}
                       </optgroup>
                     ))}
                   </select>
                 </div>
               </div>
 
-              <div className="pro-card p-5 lg:flex-1 lg:overflow-y-auto no-scrollbar flex flex-col gap-4">
+              <div className="pro-card p-4 lg:flex-1 lg:overflow-y-auto no-scrollbar flex flex-col gap-3">
                 <div>
-                  <h2 className="text-lg font-black text-[#0f172a] mb-2 pb-2 border-b-[3px] border-dashed border-slate-300">📖 跑位解析</h2>
-                  {/* V16 新增當前情境前情提要 */}
-                  <div className="mb-3 p-3 bg-slate-100 border-l-[4px] border-slate-600 text-sm font-bold text-slate-700 leading-relaxed rounded-r-lg">
-                    <span className="text-slate-900 font-black">📍 當前情境：</span><br/>{currentData.situation}
+                  <h2 className="text-lg font-black text-slate-800 mb-2 pb-2 border-b border-dashed border-slate-200">📖 跑位解析</h2>
+                  <div className="mb-3 p-3.5 bg-indigo-50 border-l-[4px] border-indigo-500 text-[15px] font-bold text-slate-700 leading-snug rounded-r-xl">
+                    <span className="text-indigo-900 font-black">📍 當前情境：</span><br/><span className="mt-1 inline-block">{currentData.situation}</span>
                   </div>
-                  <p className="text-[15px] font-bold text-slate-800 leading-relaxed">{currentData.text}</p>
+                  <p className="text-base font-bold text-slate-700 leading-relaxed">{currentData.text}</p>
                 </div>
 
-                <div className="bg-[#fef3c7] border-[3px] border-[#0f172a] p-4 rounded-xl shadow-[3px_3px_0px_0px_#0f172a] hidden lg:block mt-auto">
-                  <h3 className="text-[15px] font-black text-[#0f172a] mb-3 pb-2 border-b-[3px] border-[#0f172a] flex items-center">
+                <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl shadow-sm mt-auto">
+                  <h3 className="text-base font-black text-amber-900 mb-2 pb-1 border-b border-amber-200 flex items-center">
                     <span className="text-xl mr-2">💡</span> 雙打三大鐵律
                   </h3>
-                  <ul className="text-sm font-bold text-slate-800 leading-relaxed space-y-2">
-                    <li className="flex items-start"><span className="text-red-600 mr-2 font-black">1.</span><span><span className="text-indigo-700 font-black">挑球退防：</span>誰挑球誰退直線</span></li>
-                    <li className="flex items-start"><span className="text-red-600 mr-2 font-black">2.</span><span><span className="text-indigo-700 font-black">前排封網：</span>雨刷式橫移</span></li>
-                    <li className="flex items-start"><span className="text-red-600 mr-2 font-black">3.</span><span><span className="text-indigo-700 font-black">中路搶球：</span>防守看正手/進攻看高度</span></li>
+                  <ul className="text-[14px] font-bold text-amber-800 leading-snug space-y-1.5">
+                    <li className="flex items-start"><span className="text-red-500 mr-2 font-black">1.</span><span><span className="text-indigo-700 font-black">挑球退防：</span>誰挑球誰退直線</span></li>
+                    <li className="flex items-start"><span className="text-red-500 mr-2 font-black">2.</span><span><span className="text-indigo-700 font-black">前排封網：</span>雨刷式橫移</span></li>
+                    <li className="flex items-start"><span className="text-red-500 mr-2 font-black">3.</span><span><span className="text-indigo-700 font-black">中路搶球：</span>防守看正手/進攻看高度</span></li>
                   </ul>
                 </div>
               </div>
             </div>
-            )}
 
             {/* ================= 中央球場區 ================= */}
-            <div className={`w-full lg:flex-1 bg-[#15803d] border-[6px] border-[#0f172a] rounded-2xl relative flex justify-center items-center shadow-[inset_0px_0px_30px_rgba(0,0,0,0.5)] lg:h-full overflow-hidden ${isFullscreen ? 'min-h-[85vh]' : 'min-h-[60vh]'}`}>
+            <div className="w-full lg:flex-1 bg-[#15803d] border-[8px] border-white rounded-[2rem] relative flex justify-center items-center shadow-[0_20px_50px_rgba(0,0,0,0.15)] lg:h-full overflow-hidden min-h-[55vh]">
               
-              <div className="hidden lg:block absolute top-4 left-4 z-30">
-                 <button onClick={() => setIsFullscreen(!isFullscreen)} className="px-5 py-2 bg-[#0f172a] text-[#fbbf24] font-black text-sm border-2 border-[#fbbf24] rounded-lg hover:bg-slate-800 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none">
-                   {isFullscreen ? '退出全螢幕 🗗' : '進入教學模式 ⛶'}
-                 </button>
-              </div>
-
-              {/* V16 新增防守區顯示開關 */}
-              <div className="absolute top-4 right-4 z-30 bg-white border-[3px] border-[#0f172a] rounded-lg px-3 py-2 flex items-center shadow-[3px_3px_0px_0px_#0f172a]">
-                <span className="font-black text-[#0f172a] text-sm mr-3">🛡️ 顯示防守責任區</span>
+              <div className="absolute top-4 right-4 z-30 bg-white/90 backdrop-blur-sm border border-white/20 rounded-xl px-3 py-1.5 flex items-center shadow-lg">
+                <span className="font-black text-slate-800 text-[15px] mr-2">🛡️ 防守責任區</span>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" className="sr-only peer" checked={showCoverage} onChange={() => setShowCoverage(!showCoverage)} />
-                  <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 border-2 border-[#0f172a]"></div>
+                  <div className="w-12 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                 </label>
               </div>
 
-              <div className="hidden lg:flex absolute right-6 top-1/2 -translate-y-1/2 w-28 bg-white border-[3px] border-[#0f172a] p-2 rounded-xl shadow-[4px_4px_0px_0px_#0f172a] z-20 flex-col gap-3 opacity-95 hover:opacity-100 transition-opacity">
-                <div className="text-center pb-2 border-b-[3px] border-dashed border-slate-300 flex flex-col items-center">
-                   <span className={`inline-block w-4 h-4 rounded-full mb-1 border-2 border-[#0f172a] ${isPlaying ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                   <span className="font-black text-xs text-slate-700">{isPlaying ? '推演中' : '待命'}</span>
+              <div className="hidden lg:flex absolute right-6 top-1/2 -translate-y-1/2 w-28 bg-white/95 backdrop-blur-sm border border-white/20 p-2.5 rounded-2xl shadow-xl z-20 flex-col gap-2 opacity-90 hover:opacity-100 transition-opacity">
+                <div className="text-center pb-2 border-b border-slate-200 flex flex-col items-center">
+                   <span className={`inline-block w-3.5 h-3.5 rounded-full mb-1 shadow-inner ${isPlaying ? 'bg-green-500 animate-pulse' : 'bg-rose-500'}`}></span>
+                   <span className="font-black text-[11px] text-slate-500">{isPlaying ? '推演中' : '待命'}</span>
                 </div>
-                <button onClick={handlePlayReplay} className="w-full py-3 bg-[#fbbf24] text-[#0f172a] text-sm font-black border-[3px] border-[#0f172a] rounded-lg hover:bg-yellow-300 active:translate-y-1 active:shadow-none transition-all shadow-[2px_2px_0px_0px_#0f172a]">
+                <button onClick={handlePlayReplay} className="w-full py-2.5 bg-indigo-600 text-white text-[15px] font-black rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-md">
                   ▶ 播放
                 </button>
-                <button onClick={handleReset} className="w-full py-2 bg-slate-200 text-[#0f172a] text-sm font-bold border-[3px] border-[#0f172a] rounded-lg hover:bg-slate-300 active:translate-y-1 active:shadow-none transition-all shadow-[2px_2px_0px_0px_#0f172a]">
+                <button onClick={handleReset} className="w-full py-2 bg-slate-100 text-slate-700 text-[15px] font-bold rounded-xl hover:bg-slate-200 active:scale-95 transition-all">
                   ↺ 重置
                 </button>
               </div>
 
-              <svg viewBox="0 0 650 1380" preserveAspectRatio="xMidYMid meet" className="h-[70vh] lg:h-full w-auto max-w-full py-4 lg:py-8 drop-shadow-2xl" xmlns="http://www.w3.org/2000/svg">
+              <svg viewBox="0 0 650 1420" preserveAspectRatio="xMidYMid meet" className="h-[75vh] lg:h-full w-auto max-w-full py-2 lg:py-6 drop-shadow-2xl" xmlns="http://www.w3.org/2000/svg">
                 <defs>
                   <marker id="arrowPred0" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill={currentData.predictionLines[0].color} /></marker>
                   <marker id="arrowPred1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill={currentData.predictionLines[1].color} /></marker>
+                  <clipPath id="court-boundary">
+                    <rect x="20" y="690" width="610" height="670" />
+                  </clipPath>
                 </defs>
-                <rect x="20" y="20" width="610" height="1340" fill="none" stroke="#ffffff" strokeWidth="5" opacity="0.9" />
+                
+                {currentData.coverageStart && (
+                  <g clipPath="url(#court-boundary)" style={{ transition: 'opacity 0.3s ease', opacity: showCoverage ? 1 : 0 }}>
+                    <path className="coverage-path" d={isPlaying ? currentData.coverageEnd.a : currentData.coverageStart.a} fill="#3b82f6" opacity="0.25" />
+                    <path className="coverage-path" d={isPlaying ? currentData.coverageEnd.b : currentData.coverageStart.b} fill="#ef4444" opacity="0.25" />
+                  </g>
+                )}
+
+                <rect x="20" y="20" width="610" height="1340" rx="12" ry="12" fill="none" stroke="#ffffff" strokeWidth="5" opacity="0.9" />
                 <line x1="20" y1="94" x2="630" y2="94" stroke="#ffffff" strokeWidth="4" opacity="0.9" />
                 <line x1="20" y1="1286" x2="630" y2="1286" stroke="#ffffff" strokeWidth="4" opacity="0.9" />
                 <line x1="20" y1="492" x2="630" y2="492" stroke="#ffffff" strokeWidth="4" opacity="0.9" />
@@ -508,22 +527,12 @@
                 <line x1="325" y1="20" x2="325" y2="492" stroke="#ffffff" strokeWidth="5" opacity="0.9" />
                 <line x1="325" y1="888" x2="325" y2="1360" stroke="#ffffff" strokeWidth="5" opacity="0.9" />
                 <line x1="0" y1="690" x2="650" y2="690" stroke="#ffffff" strokeWidth="10" opacity="0.9" strokeLinecap="round" />
-                <line x1="0" y1="690" x2="650" y2="690" stroke="#0f172a" strokeWidth="4" strokeDasharray="8" opacity="0.5" />
+                <line x1="0" y1="690" x2="650" y2="690" stroke="#000000" strokeWidth="4" strokeDasharray="8" opacity="0.2" />
 
-                {/* V16 繪製防守責任區塊 */}
-                {currentData.coverage && (
-                  <g className="coverage-area" opacity={showCoverage ? (isPlaying || !animEnabled ? 1 : 0) : 0}>
-                    <path d={currentData.coverage.a} fill="#3b82f6" opacity="0.2" />
-                    <path d={currentData.coverage.b} fill="#ef4444" opacity="0.2" />
-                    <text x="70" y="1350" fill="#3b82f6" fontSize="16" fontWeight="bold" opacity="0.7">A 責任區</text>
-                    <text x="540" y="1350" fill="#ef4444" fontSize="16" fontWeight="bold" opacity="0.7">B 責任區</text>
-                  </g>
-                )}
+                <text x="620" y="1405" fontSize="36" fill="#ffffff" opacity="0.6" textAnchor="end" fontWeight="900" style={{ letterSpacing: '2px' }}>© hangbaliu</text>
 
-                {isAnimFinished && enablePrediction && currentData.predictionLines.map((line, idx) => renderPredictionLine(currentData.ballEnd, line, idx))}
-                {renderBallPath()}
-                
-                {scenario !== '接發推撲上網 (強勢搶攻)' && <circle className="anim-ball" cx={isPlaying ? currentData.ballEnd[0] : currentData.ballStart[0]} cy={isPlaying ? currentData.ballEnd[1] : currentData.ballStart[1]} r="12" fill="#ffffff" stroke="#0f172a" strokeWidth="3" opacity={isPlaying ? 1 : 0} />}
+                {isAnimFinished && enablePrediction && currentData.predictionLines.map((line, idx) => renderPredictionLine(predictOrigin, line, idx))}
+                {renderBall()}
 
                 {renderPlayer(currentData.opp1Start, currentData.opp1End, '#94a3b8', 'C', true)}
                 {renderPlayer(currentData.opp2Start, currentData.opp2End, '#64748b', 'D', true)}
@@ -533,74 +542,70 @@
             </div>
 
             {/* ================= 右側面板 ================= */}
-            {!isFullscreen && (
-            <div className="w-full lg:w-[340px] flex flex-col gap-5 shrink-0 lg:h-full lg:overflow-hidden pb-6 lg:pb-0">
+            <div className="w-full lg:w-[380px] flex flex-col gap-4 shrink-0 lg:h-full lg:overflow-hidden pb-6 lg:pb-0">
               
-              <div className={`pro-card transition-colors duration-300 flex flex-col lg:min-h-[150px] shrink-0 overflow-hidden ${enablePrediction ? 'bg-[#1e1b4b] border-[#1e1b4b]' : 'bg-slate-200 border-slate-300'}`}>
-                <div className="flex justify-between items-center mb-0 pb-3 border-b-[3px] border-indigo-400 p-4">
-                  <span className={`font-black text-lg ${enablePrediction ? 'text-white' : 'text-slate-500'}`}>🔮 下一拍預測</span>
+              <div className={`pro-card transition-colors duration-300 flex flex-col shrink-0 overflow-hidden ${enablePrediction ? 'bg-slate-900 border-slate-900' : 'bg-slate-100 border-slate-200'}`}>
+                <div className="flex justify-between items-center pb-2 border-b border-white/10 p-4">
+                  <span className={`font-black text-lg ${enablePrediction ? 'text-white' : 'text-slate-400'}`}>🔮 下一拍預測</span>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" className="sr-only peer" checked={enablePrediction} onChange={() => setEnablePrediction(!enablePrediction)} />
-                    <div className="w-12 h-6 bg-slate-400 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-400 border-2 border-[#0f172a]"></div>
+                    <div className="w-12 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
                   </label>
                 </div>
-                <div className="p-4 lg:flex-1 lg:overflow-y-auto no-scrollbar flex flex-col justify-center">
+                <div className="p-4 flex flex-col justify-center">
                   {enablePrediction ? (
                     isAnimFinished ? (
                       <div className="animate-fade-in flex flex-col gap-2">
-                         <div className="flex items-center gap-2 bg-indigo-900/50 p-2 rounded-lg">
-                            <span className="w-6 h-6 rounded-full bg-[#06b6d4] text-white font-bold text-xs border-2 border-white flex items-center justify-center shadow-sm">1</span>
-                            <span className="text-[#06b6d4] font-black text-sm">{currentData.predictionLines[0].label}</span>
-                            <span className="mx-1 text-indigo-400 font-black">|</span>
-                            <span className="w-6 h-6 rounded-full bg-[#ec4899] text-white font-bold text-xs border-2 border-white flex items-center justify-center shadow-sm">2</span>
-                            <span className="text-[#ec4899] font-black text-sm">{currentData.predictionLines[1].label}</span>
+                         <div className="flex items-center gap-2 bg-white/10 p-2 rounded-xl backdrop-blur-md">
+                            <span className="w-6 h-6 rounded-full bg-[#06b6d4] text-white font-bold text-xs border border-white/20 flex items-center justify-center shadow-lg">1</span>
+                            <span className="text-[#22d3ee] font-black text-[15px]">{currentData.predictionLines[0].label}</span>
+                            <span className="mx-1 text-slate-500 font-black">|</span>
+                            <span className="w-6 h-6 rounded-full bg-[#ec4899] text-white font-bold text-xs border border-white/20 flex items-center justify-center shadow-lg">2</span>
+                            <span className="text-[#f472b6] font-black text-[15px]">{currentData.predictionLines[1].label}</span>
                          </div>
-                         <p className="text-indigo-100 text-[15px] font-bold leading-relaxed mt-1">{currentData.predictText}</p>
+                         <p className="text-slate-300 text-[15px] font-bold leading-snug">{currentData.predictText}</p>
                       </div>
-                    ) : <div className="text-center text-indigo-300 font-bold text-sm animate-pulse py-4">動畫完畢後顯示情報...</div>
-                  ) : <div className="text-center text-slate-500 font-bold text-sm py-4">雷達已關閉</div>}
+                    ) : <div className="text-center text-slate-500 font-bold text-sm animate-pulse py-3">等待動畫演算完畢...</div>
+                  ) : <div className="text-center text-slate-400 font-bold text-sm py-3">雷達已關閉</div>}
                 </div>
               </div>
 
-              <div className="pro-card p-4 lg:p-5 lg:flex-1 flex flex-col lg:overflow-y-auto no-scrollbar">
-                <h2 className="text-lg font-black text-[#0f172a] mb-4 pb-2 border-b-[3px] border-dashed border-slate-300">🧠 實戰痛點覆盤</h2>
-                <div className="flex flex-col gap-4 pb-2">
-                  <button onClick={() => setShowNewbie(!showNewbie)} className={`w-full py-3 font-black border-[3px] border-[#0f172a] rounded-xl transition-all active:translate-y-1 active:shadow-none ${showNewbie ? 'bg-blue-300 text-[#0f172a] shadow-[3px_3px_0px_0px_#0f172a]' : 'bg-slate-100 text-slate-600 shadow-sm hover:bg-slate-200'}`}>
+              <div className="pro-card p-4 lg:flex-1 flex flex-col lg:overflow-y-auto no-scrollbar">
+                <h2 className="text-lg font-black text-slate-800 mb-3 pb-2 border-b border-dashed border-slate-200">🧠 實戰痛點覆盤</h2>
+                <div className="flex flex-col gap-3">
+                  <button onClick={() => setShowNewbie(!showNewbie)} className={`w-full py-3 font-black border border-slate-200 rounded-xl transition-all text-base active:scale-95 ${showNewbie ? 'bg-sky-100 text-sky-900 shadow-inner' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-50'}`}>
                     {showNewbie ? '▼ 新手痛點解方' : '▶ 新手痛點解方'}
                   </button>
                   {showNewbie && (
-                    <div className="bg-blue-50 border-l-[6px] border-blue-500 p-4 rounded-r-xl shadow-sm animate-fade-in flex flex-col gap-2">
-                      <div className="text-slate-800 text-sm leading-relaxed"><span className="text-red-600 font-black text-base">⚠️ 痛點：</span>{currentData.newbie.pain}</div>
-                      <div className="text-slate-800 text-sm leading-relaxed"><span className="text-green-600 font-black text-base">💡 克服：</span>{currentData.newbie.solve}</div>
+                    <div className="bg-sky-50/50 border-l-[4px] border-sky-400 p-3 rounded-r-xl animate-fade-in flex flex-col gap-1.5">
+                      <div className="text-slate-700 text-[14px] leading-relaxed"><span className="text-rose-500 font-black">⚠️ 痛點：</span>{currentData.newbie.pain}</div>
+                      <div className="text-slate-700 text-[14px] leading-relaxed"><span className="text-emerald-600 font-black">💡 克服：</span>{currentData.newbie.solve}</div>
                     </div>
                   )}
 
-                  <button onClick={() => setShowVeteran(!showVeteran)} className={`w-full py-3 font-black border-[3px] border-[#0f172a] rounded-xl transition-all active:translate-y-1 active:shadow-none ${showVeteran ? 'bg-orange-300 text-[#0f172a] shadow-[3px_3px_0px_0px_#0f172a]' : 'bg-slate-100 text-slate-600 shadow-sm hover:bg-slate-200'}`}>
+                  <button onClick={() => setShowVeteran(!showVeteran)} className={`w-full py-3 font-black border border-slate-200 rounded-xl transition-all text-base active:scale-95 ${showVeteran ? 'bg-orange-100 text-orange-900 shadow-inner' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-50'}`}>
                     {showVeteran ? '▼ 老手進階細節' : '▶ 老手進階細節'}
                   </button>
                   {showVeteran && (
-                    <div className="bg-orange-50 border-l-[6px] border-orange-500 p-4 rounded-r-xl shadow-sm animate-fade-in flex flex-col gap-2">
-                      <div className="text-slate-800 text-sm leading-relaxed"><span className="text-red-600 font-black text-base">⚠️ 痛點：</span>{currentData.veteran.pain}</div>
-                      <div className="text-slate-800 text-sm leading-relaxed"><span className="text-green-600 font-black text-base">💡 克服：</span>{currentData.veteran.solve}</div>
+                    <div className="bg-orange-50/50 border-l-[4px] border-orange-400 p-3 rounded-r-xl animate-fade-in flex flex-col gap-1.5">
+                      <div className="text-slate-700 text-[14px] leading-relaxed"><span className="text-rose-500 font-black">⚠️ 痛點：</span>{currentData.veteran.pain}</div>
+                      <div className="text-slate-700 text-[14px] leading-relaxed"><span className="text-emerald-600 font-black">💡 克服：</span>{currentData.veteran.solve}</div>
                     </div>
                   )}
                 </div>
               </div>
               
             </div>
-            )}
           </div>
 
-          {!isFullscreen && (
-          <div className="lg:hidden fixed bottom-0 left-0 right-0 w-full bg-white border-t-[4px] border-[#0f172a] p-3 z-50 flex gap-3 shadow-[0px_-5px_15px_rgba(0,0,0,0.1)]">
-              <button onClick={handlePlayReplay} className="flex-1 py-3 bg-[#fbbf24] text-[#0f172a] text-lg font-black border-[3px] border-[#0f172a] rounded-xl shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-1 active:shadow-none transition-all">
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200 p-3 z-50 flex gap-2 shadow-[0_-10px_40px_rgba(0,0,0,0.08)]">
+              <button onClick={handlePlayReplay} className="flex-1 py-3 bg-indigo-600 text-white text-lg font-black rounded-xl shadow-lg active:scale-95 transition-all">
                 ▶ 播放 / 重播
               </button>
-              <button onClick={handleReset} className="w-20 py-3 bg-slate-200 text-[#0f172a] text-xl font-black border-[3px] border-[#0f172a] rounded-xl shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-1 active:shadow-none transition-all">
+              <button onClick={handleReset} className="w-20 py-3 bg-slate-100 text-slate-600 text-xl font-black rounded-xl shadow-sm border border-slate-200 active:scale-95 transition-all">
                 ↺
               </button>
           </div>
-          )}
         </React.Fragment>
       );
     };
